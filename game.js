@@ -50,7 +50,7 @@ const STRATEGIES = [
   { key: "ambush", name: "伏兵", cost: 0, cooldown: 16, color: "#42684f", hint: "山道减速伤害" },
   { key: "fire", name: "火攻", cost: 0, cooldown: 18, color: "#b94d2f", hint: "横向燃烧" },
   { key: "supplyCut", name: "断粮", cost: 0, cooldown: 26, color: "#6b5a45", hint: "削弱下波" },
-  { key: "fortify", name: "铲子", cost: 0, cooldown: 20, color: "#9d7a2c", hint: "拖动开垦" },
+  { key: "fortify", name: "开垦", cost: 0, cooldown: 20, color: "#9d7a2c", hint: "可拖动" },
 ];
 let STRATEGY_RECTS = [];
 const MAX_MORALE = 100;
@@ -1102,7 +1102,7 @@ function drawMenuRules(y) {
     "1 兵营里的两个同级同兵可拖拽合成",
     "2 地图单位可拖回兵营，兵营格之间可交换",
     "3 兵营单位拖到地图已有单位，可替换回兵营",
-    "4 铲子闪烁时拖到地图，可开垦新阵地",
+    "4 开垦闪烁时拖到地图，可开出新阵地",
   ];
   strokeText(lines[0], x + 18, y + 28, "#ffe39a", "#120806", 3);
   ctx.font = "15px Microsoft YaHei, sans-serif";
@@ -1739,7 +1739,7 @@ function drawCommandTile(rect, item, ready, selected, cd) {
   strokeText(item.name, compact ? rect.x + rect.w / 2 - 4 : rect.x + iconSize + 16, rect.y + rect.h / 2 + 8, selected ? "#2a160c" : "#fff3cf", selected ? "#ffe8a3" : "#130906", 3);
   if (isShovel && ready && !compact) {
     ctx.font = "12px Microsoft YaHei, sans-serif";
-    strokeText(item.hint, rect.x + iconSize + 17, rect.y + rect.h - 8, "#f5d78b", "#130906", 2);
+    strokeText(pulse > 0.35 ? "可用" : item.hint, rect.x + iconSize + 17, rect.y + rect.h - 8, "#f5d78b", "#130906", 2);
   }
   if (!ready) {
     ctx.fillStyle = "rgba(20, 11, 7, .72)";
