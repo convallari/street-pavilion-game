@@ -176,7 +176,7 @@ function createPlayer(id) {
   return {
     id,
     hearts: 4,
-    food: 22,
+    food: 20,
     recruits: 0,
     camp: Array(CAMP_SLOTS).fill(null),
     units: [],
@@ -192,8 +192,8 @@ function createGame() {
     wave: 1,
     waveTimer: 0,
     waveBanner: 2.6,
-    spawn: { bottom: 0.9 },
-    spawnBudget: { bottom: 5 },
+    spawn: { bottom: 0.65 },
+    spawnBudget: { bottom: 7 },
     paused: false,
     speed: 1,
     time: 0,
@@ -315,11 +315,11 @@ function updateBattle(dt) {
     game.strategyCooldowns[key] = Math.max(0, game.strategyCooldowns[key] - dt);
   }
 
-  if (game.waveTimer >= 26 && game.wave < 7) {
+  if (game.waveTimer >= 23 && game.wave < 7) {
     game.waveTimer = 0;
     game.wave += 1;
-    game.spawnBudget.bottom += 3 + Math.floor(game.wave * 0.95);
-    if (game.wave === 7) game.spawnBudget.bottom += 2;
+    game.spawnBudget.bottom += 4 + Math.floor(game.wave * 1.35);
+    if (game.wave === 7) game.spawnBudget.bottom += 4;
     game.waveBanner = 2.2;
     popText(W / 2, BOARD_Y - 8, `魏军第${game.wave}阵`, "#fff5cf", 1.25);
   }
@@ -336,7 +336,7 @@ function updateBattle(dt) {
 function spawnEnemies(player, dt) {
   game.spawn[player.id] -= dt;
   if (game.spawn[player.id] > 0 || game.spawnBudget[player.id] <= 0) return;
-  const gap = Math.max(1.25, 2.85 - game.wave * 0.2) + Math.random() * 0.65;
+  const gap = Math.max(0.85, 2.35 - game.wave * 0.22) + Math.random() * 0.45;
   game.spawn[player.id] = gap;
   game.spawnBudget[player.id] -= 1;
   player.enemies.push(createEnemy(player.id));
@@ -352,8 +352,8 @@ function createEnemy(targetId) {
     game.bossSpawned = true;
   } else {
     const roll = Math.random();
-    const generalChance = game.wave >= 3 ? 0.06 + game.wave * 0.012 : 0.02;
-    const riderChance = 0.14 + game.wave * 0.012;
+    const generalChance = game.wave >= 3 ? 0.09 + game.wave * 0.018 : 0.035;
+    const riderChance = 0.18 + game.wave * 0.02;
     if (roll < generalChance) type = "weiGeneral";
     else if (roll < generalChance + riderChance) type = "weiRider";
   }
@@ -396,10 +396,10 @@ function chooseEnemyRoute() {
 
 function enemyData(type, tough) {
   const table = {
-    weiSoldier: { glyph: "卒", hp: 68 + tough * 18, speed: 25 + Math.min(13, game.wave * 1.45), bounty: 1, leakDamage: 1, resist: { fire: 0.9, ambush: 1, normal: 1 } },
-    weiRider: { glyph: "骑", hp: 58 + tough * 16, speed: 36 + Math.min(18, game.wave * 1.9), bounty: 1, leakDamage: 1, resist: { fire: 1, ambush: 0.85, normal: 1 } },
-    weiGeneral: { glyph: "将", hp: 132 + tough * 34, speed: 20 + Math.min(11, game.wave * 1.25), bounty: 2, leakDamage: 2, resist: { fire: 0.55, ambush: 0.7, normal: 0.95 } },
-    zhangHe: { glyph: "郃", hp: 420, speed: 22, bounty: 5, leakDamage: 3, resist: { fire: 0.45, ambush: 0.55, normal: 0.9 } },
+    weiSoldier: { glyph: "卒", hp: 84 + tough * 24, speed: 28 + Math.min(16, game.wave * 1.65), bounty: 1, leakDamage: 1, resist: { fire: 0.86, ambush: 0.95, normal: 0.95 } },
+    weiRider: { glyph: "骑", hp: 76 + tough * 22, speed: 42 + Math.min(22, game.wave * 2.15), bounty: 1, leakDamage: 1, resist: { fire: 0.95, ambush: 0.78, normal: 0.92 } },
+    weiGeneral: { glyph: "将", hp: 176 + tough * 44, speed: 24 + Math.min(14, game.wave * 1.45), bounty: 2, leakDamage: 2, resist: { fire: 0.48, ambush: 0.62, normal: 0.86 } },
+    zhangHe: { glyph: "郃", hp: 680, speed: 27, bounty: 5, leakDamage: 3, resist: { fire: 0.38, ambush: 0.48, normal: 0.82 } },
   };
   return table[type];
 }
@@ -426,7 +426,7 @@ function updateEnemies(player, dt) {
       enemy.x = next.x;
       enemy.y = next.y;
       enemy.seg += 1;
-      if (enemy.seg >= 1) enemy.guard = false;
+      if (enemy.seg >= 2) enemy.guard = false;
     } else {
       enemy.x += (dx / dist) * step;
       enemy.y += (dy / dist) * step;
@@ -540,7 +540,7 @@ function zoneCombatBonus(unit, enemy) {
 }
 
 function damageEnemy(player, enemy, amount, source) {
-  if (enemy.guard) amount = Math.max(1, Math.round(amount * 0.45));
+  if (enemy.guard) amount = Math.max(1, Math.round(amount * 0.34));
   enemy.hp -= amount;
   enemy.bleed = 0.22;
   if (source !== "normal") {
@@ -661,7 +661,7 @@ function checkResult() {
 }
 
 function recruitCost(player) {
-  return Math.min(22, 8 + player.recruits * 2);
+  return Math.min(28, 10 + player.recruits * 3);
 }
 
 function recruitUnit(player) {
