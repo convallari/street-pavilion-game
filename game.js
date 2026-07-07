@@ -726,26 +726,98 @@ function removeUnit(player, unit) {
   if (index !== -1) player.units.splice(index, 1);
 }
 
+function setCampUnit(player, index, unit) {
+  player.camp[index] = unit || null;
+  if (unit) {
+    unit.row = null;
+    unit.col = null;
+    unit.owner = player.id;
+  }
+}
+
+function mergeIntoUnit(target, source, x, y) {
+  target.level += 1;
+  target.cooldown = 0.1;
+  game.hasPlaced = true;
+  game.hintTimer = 6;
+  addMorale(8);
+  popText(x, y, `Lv.${target.level}`, "#fff7bb", 0.8);
+  addRing(x, y + 18, "#ffe48d", 0.65);
+  playSfx("merge");
+  return true;
+}
+
+function tryDropUnitToCamp(player, unit, targetIndex, source) {
+  if (!unit || targetIndex < 0 || targetIndex >= CAMP_SLOTS) return false;
+  if (source?.type === "camp" && source.index === targetIndex) return false;
+  const target = player.camp[targetIndex];
+  const slotCenter = campSlotCenter(targetIndex);
+
+  if (target && canMerge(unit, target)) {
+    if (source?.type === "camp") setCampUnit(player, source.index, null);
+    if (source?.type === "board") removeUnit(player, source.unit);
+    mergeIntoUnit(target, unit, slotCenter.x, slotCenter.y - 12);
+    return true;
+  }
+
+  if (source?.type === "camp") {
+    setCampUnit(player, source.index, target || null);
+    setCampUnit(player, targetIndex, unit);
+    popText(slotCenter.x, slotCenter.y - 12, target ? "交换" : "入营", "#fff0b8", 0.72);
+    playSfx("select");
+    return true;
+  }
+
+  if (source?.type === "board") {
+    const row = source.unit.row;
+    const col = source.unit.col;
+    removeUnit(player, source.unit);
+    setCampUnit(player, targetIndex, unit);
+    if (target) {
+      const canPlaceTarget = canFitUnit(player, target, row, col);
+      if (!canPlaceTarget) {
+        setCampUnit(player, targetIndex, target);
+        placeUnit(player, source.unit, row, col);
+        return false;
+      }
+      placeUnit(player, target, row, col);
+      game.hasPlaced = true;
+      popText(slotCenter.x, slotCenter.y - 12, "互换", "#fff0b8", 0.72);
+    } else {
+      popText(slotCenter.x, slotCenter.y - 12, "收回", "#fff0b8", 0.72);
+    }
+    playSfx("select");
+    scanHeroCombos(player);
+    return true;
+  }
+
+  return false;
+}
+
 function tryDropUnit(player, unit, r, c, source) {
   if (!unit || !Number.isFinite(r) || !Number.isFinite(c)) return false;
   const occupant = unitAt(player, r, c, source?.unit?.id);
   if (occupant && canMerge(unit, occupant)) {
-    if (source?.type === "camp") player.camp[source.index] = null;
+    if (source?.type === "camp") setCampUnit(player, source.index, null);
     if (source?.type === "board") removeUnit(player, source.unit);
-    occupant.level += 1;
-    occupant.cooldown = 0.1;
+    const rect = cellRect(occupant.row, occupant.col);
+    mergeIntoUnit(occupant, unit, rect.x + CELL / 2, rect.y + 20);
+    scanHeroCombos(player);
+    return true;
+  }
+  if (occupant && source?.type === "camp" && canFitUnit(player, unit, r, c, occupant.id)) {
+    setCampUnit(player, source.index, occupant);
+    removeUnit(player, occupant);
+    placeUnit(player, unit, r, c);
     game.hasPlaced = true;
     game.hintTimer = 6;
-    addMorale(8);
-    const rect = cellRect(occupant.row, occupant.col);
-    popText(rect.x + CELL / 2, rect.y + 20, `Lv.${occupant.level}`, "#fff7bb", 0.8);
-    addRing(rect.x + CELL / 2, rect.y + CELL / 2, "#ffe48d", 0.65);
-    playSfx("merge");
+    popText(cellRect(r, c).x + CELL / 2, cellRect(r, c).y + 22, "互换", "#fff0b8", 0.72);
+    playSfx("select");
     scanHeroCombos(player);
     return true;
   }
   if (!canFitUnit(player, unit, r, c, source?.unit?.id)) return false;
-  if (source?.type === "camp") player.camp[source.index] = null;
+  if (source?.type === "camp") setCampUnit(player, source.index, null);
   if (source?.type === "board") removeUnit(player, source.unit);
   placeUnit(player, unit, r, c);
   game.hasPlaced = true;
@@ -758,7 +830,7 @@ function canMerge(a, b) {
   if (!a || !b || a.id === b.id || a.level !== b.level) return false;
   if (a.kind === "hero" && b.kind === "hero") return a.name === b.name;
   if (a.kind !== b.kind) return false;
-  return a.label === b.label && a.kind !== "char";
+  return a.label === b.label;
 }
 
 function canFitUnit(player, unit, r, c, ignoreId = null) {
@@ -986,11 +1058,39 @@ function drawMenu() {
   strokeText("街亭之战", W / 2, titleY, "#c0362b", "rgba(255,247,219,.9)", 8);
   ctx.font = `${Math.max(20, Math.min(28, W * 0.04))}px Microsoft YaHei, sans-serif`;
   strokeText("火柴人计谋塔防", W / 2, titleY + 56, "#f1d67a", "#17130f", 5);
+  drawMenuRules(titleY + 88);
   drawButton(startRect.x, startRect.y, startRect.w, startRect.h, "#b9483e", "#642b25");
   ctx.font = `${Math.max(28, Math.min(38, W * 0.055))}px Microsoft YaHei, sans-serif`;
   strokeText("守卫街亭", W / 2, startRect.y + startRect.h * 0.65, "#ffffff", "#15110f", 5);
   ctx.font = "21px Microsoft YaHei, sans-serif";
   strokeText("调兵布阵  合将出计  山道伏魏", W / 2, startRect.y + startRect.h + 34, "#f4dfb7", "#22120d", 3);
+  ctx.restore();
+}
+
+function drawMenuRules(y) {
+  const w = Math.min(520, W * 0.86);
+  const h = 116;
+  const x = W / 2 - w / 2;
+  ctx.save();
+  ctx.fillStyle = "rgba(35, 20, 13, .78)";
+  ctx.strokeStyle = "rgba(255, 226, 154, .75)";
+  ctx.lineWidth = 2;
+  roundRect(ctx, x, y, w, h, 12);
+  ctx.fill();
+  ctx.stroke();
+  ctx.textAlign = "left";
+  ctx.font = "18px Microsoft YaHei, sans-serif";
+  const lines = [
+    "玩法说明",
+    "1 兵营里的两个同级同兵可拖拽合成",
+    "2 兵营格之间可交换位置",
+    "3 兵营与战场单位可互换，方便调整阵形",
+  ];
+  strokeText(lines[0], x + 18, y + 28, "#ffe39a", "#120806", 3);
+  ctx.font = "16px Microsoft YaHei, sans-serif";
+  for (let i = 1; i < lines.length; i += 1) {
+    strokeText(lines[i], x + 18, y + 30 + i * 22, "#fff5d8", "#120806", 3);
+  }
   ctx.restore();
 }
 
@@ -1653,10 +1753,25 @@ function drawSpeedButton() {
 function drawDrag() {
   if (!drag) return;
   drawUnitCard(drag.unit, { x: drag.x - CELL / 2, y: drag.y - CELL / 2, w: CELL, h: CELL }, true);
+  const campIndex = hitCampSlot({ x: drag.x, y: drag.y });
+  if (campIndex !== -1) {
+    const x = SLOT_X + campIndex * (SLOT_W + SLOT_GAP);
+    const target = game.bottom.camp[campIndex];
+    const ok = !target || canMerge(drag.unit, target) || drag.source?.type === "board" || drag.source?.type === "camp";
+    ctx.save();
+    ctx.strokeStyle = ok ? "#f3b331" : "#b24036";
+    ctx.lineWidth = 4;
+    roundRect(ctx, x - 3, CAMP_Y - 3, SLOT_W + 6, SLOT_H + 6, 8);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
   const cell = pointToCell(drag.x, drag.y);
   if (cell) {
+    const occupant = unitAt(game.bottom, cell.r, cell.c, drag.source.unit?.id);
     const ok = canFitUnit(game.bottom, drag.unit, cell.r, cell.c, drag.source.unit?.id) ||
-      canMerge(drag.unit, unitAt(game.bottom, cell.r, cell.c, drag.source.unit?.id));
+      canMerge(drag.unit, occupant) ||
+      (drag.source?.type === "camp" && occupant);
     const rect = cellRect(cell.r, cell.c);
     ctx.save();
     ctx.strokeStyle = ok ? "#f3b331" : "#b24036";
@@ -2124,6 +2239,12 @@ canvas.addEventListener("pointerup", (event) => {
   const p = canvasPoint(event);
   pointer = p;
   if (!drag) return;
+  const campIndex = hitCampSlot(p);
+  if (campIndex !== -1) {
+    tryDropUnitToCamp(game.bottom, drag.unit, campIndex, drag.source);
+    drag = null;
+    return;
+  }
   const cell = pointToCell(p.x, p.y);
   if (cell) tryDropUnit(game.bottom, drag.unit, cell.r, cell.c, drag.source);
   drag = null;
@@ -2140,4 +2261,9 @@ function hitCampSlot(p) {
     if (p.x >= x && p.x <= x + SLOT_W) return i;
   }
   return -1;
+}
+
+function campSlotCenter(index) {
+  const x = SLOT_X + index * (SLOT_W + SLOT_GAP);
+  return { x: x + SLOT_W / 2, y: CAMP_Y + SLOT_H / 2 };
 }
