@@ -50,7 +50,7 @@ const STRATEGIES = [
   { key: "ambush", name: "伏兵", cost: 0, cooldown: 16, color: "#42684f", hint: "山道减速伤害" },
   { key: "fire", name: "火攻", cost: 0, cooldown: 18, color: "#b94d2f", hint: "横向燃烧" },
   { key: "supplyCut", name: "断粮", cost: 0, cooldown: 26, color: "#6b5a45", hint: "削弱下波" },
-  { key: "fortify", name: "筑垒", cost: 0, cooldown: 20, color: "#9d7a2c", hint: "开放阵地" },
+  { key: "fortify", name: "铲子", cost: 0, cooldown: 20, color: "#9d7a2c", hint: "拖动开垦" },
 ];
 let STRATEGY_RECTS = [];
 const MAX_MORALE = 100;
@@ -101,6 +101,7 @@ const SVG_SPECS = {
   zhangHe: { body: "#ffe2c0", stroke: "#120d0b", accent: "#b4211c", weapon: "halberd" },
   food: { body: "#fff2cf", stroke: "#4b3425", accent: "#d8a84b", weapon: "grain" },
   fortify: { body: "#f7ead2", stroke: "#453421", accent: "#a77a2e", weapon: "wall" },
+  shovel: { body: "#f7ead2", stroke: "#453421", accent: "#a77a2e", weapon: "shovel" },
   ambushIcon: { body: "#eaf7e9", stroke: "#182016", accent: "#42684f", weapon: "ambush" },
   fireIcon: { body: "#ffe1c8", stroke: "#35140d", accent: "#d9532f", weapon: "fire" },
   supplyIcon: { body: "#f0e5d3", stroke: "#2b2017", accent: "#6b5a45", weapon: "cut" },
@@ -147,6 +148,7 @@ function makeStickSvg(spec) {
     shield: `<path d="M55 24 Q78 28 74 53 Q68 70 55 76 Q42 70 36 53 Q34 28 55 24 Z" fill="${spec.accent}" opacity=".72"/>`,
     halberd: `<line x1="48" y1="10" x2="76" y2="82"/><path d="M42 12 Q66 15 54 35 L43 27 Z" fill="${spec.accent}"/>`,
     wall: `<path d="M16 62 h68 v22 h-68 z M20 48 h18 v14 h-18z M42 48 h18 v14 h-18z M64 48 h18 v14 h-18z" fill="${spec.accent}"/>`,
+    shovel: `<line x1="30" y1="74" x2="70" y2="24"/><path d="M64 16 Q82 24 78 42 Q67 48 58 35 Z" fill="${spec.accent}"/><path d="M23 78 h18" fill="none"/>`,
     ambush: `<path d="M18 76 Q42 36 80 76"/><path d="M32 74 l8 -20 l8 20 M52 74 l8 -26 l8 26" fill="none"/>`,
     fire: `<path d="M50 78 Q25 60 43 39 Q48 28 46 17 Q70 38 61 52 Q76 48 78 68 Q70 86 50 78 Z" fill="${spec.accent}"/>`,
     cut: `<path d="M20 66 Q42 30 70 34"/><line x1="26" y1="28" x2="76" y2="78"/>`,
@@ -709,8 +711,23 @@ function tryUnlockLandAt(player, r, c) {
   if (!exists || player.land.has(key)) return false;
   player.land.add(key);
   const rect = cellRect(r, c);
-  popText(rect.x + CELL / 2, rect.y + CELL / 2, "筑垒", "#ffe19b", 0.9);
+  popText(rect.x + CELL / 2, rect.y + CELL / 2, "开垦", "#ffe19b", 0.9);
   addMorale(5);
+  return true;
+}
+
+function tryUseShovelAt(cell) {
+  if (!cell || game.strategyCooldowns.fortify > 0) return false;
+  const rect = cellRect(cell.r, cell.c);
+  const ok = tryUnlockLandAt(game.bottom, cell.r, cell.c);
+  if (!ok) {
+    popText(rect.x + CELL / 2, rect.y + CELL / 2, "不可开垦", "#ffb5a3", 0.72);
+    return false;
+  }
+  game.strategyCooldowns.fortify = strategyByKey("fortify").cooldown;
+  addRing(rect.x + CELL / 2, rect.y + CELL / 2, "#d8ad52", 0.82);
+  burst(rect.x + CELL / 2, rect.y + CELL / 2, "#d8ad52", 10);
+  playSfx("fortify");
   return true;
 }
 
@@ -1083,13 +1100,14 @@ function drawMenuRules(y) {
   const lines = [
     "玩法说明",
     "1 兵营里的两个同级同兵可拖拽合成",
-    "2 兵营格之间可交换位置",
-    "3 兵营与战场单位可互换，方便调整阵形",
+    "2 地图单位可拖回兵营，兵营格之间可交换",
+    "3 兵营单位拖到地图已有单位，可替换回兵营",
+    "4 铲子闪烁时拖到地图，可开垦新阵地",
   ];
   strokeText(lines[0], x + 18, y + 28, "#ffe39a", "#120806", 3);
-  ctx.font = "16px Microsoft YaHei, sans-serif";
+  ctx.font = "15px Microsoft YaHei, sans-serif";
   for (let i = 1; i < lines.length; i += 1) {
-    strokeText(lines[i], x + 18, y + 30 + i * 22, "#fff5d8", "#120806", 3);
+    strokeText(lines[i], x + 18, y + 30 + i * 20, "#fff5d8", "#120806", 3);
   }
   ctx.restore();
 }
@@ -1695,7 +1713,9 @@ function drawStrategyButtons() {
 }
 
 function drawCommandTile(rect, item, ready, selected, cd) {
-  const icon = rect.key === "ambush" ? "ambushIcon" : (rect.key === "fire" ? "fireIcon" : (rect.key === "supplyCut" ? "supplyIcon" : "fortify"));
+  const isShovel = rect.key === "fortify";
+  const icon = rect.key === "ambush" ? "ambushIcon" : (rect.key === "fire" ? "fireIcon" : (rect.key === "supplyCut" ? "supplyIcon" : "shovel"));
+  const pulse = isShovel && ready ? 0.5 + Math.sin(performance.now() / 190) * 0.5 : 0;
   ctx.save();
   ctx.fillStyle = selected ? "#f2c94c" : (ready ? "#352016" : "#7c7163");
   ctx.strokeStyle = selected ? "#6b3d12" : item.color;
@@ -1703,6 +1723,12 @@ function drawCommandTile(rect, item, ready, selected, cd) {
   roundRect(ctx, rect.x, rect.y, rect.w, rect.h, 10);
   ctx.fill();
   ctx.stroke();
+  if (isShovel && ready) {
+    ctx.strokeStyle = `rgba(255, 226, 132, ${0.38 + pulse * 0.45})`;
+    ctx.lineWidth = 3 + pulse * 3;
+    roundRect(ctx, rect.x - 4, rect.y - 4, rect.w + 8, rect.h + 8, 14);
+    ctx.stroke();
+  }
   ctx.globalAlpha = ready ? 1 : 0.45;
   const compact = rect.w < 96;
   const iconSize = compact ? Math.min(24, rect.h - 20) : Math.min(34, rect.h - 16);
@@ -1711,6 +1737,10 @@ function drawCommandTile(rect, item, ready, selected, cd) {
   ctx.textAlign = compact ? "center" : "left";
   ctx.font = `${compact ? 18 : Math.max(18, Math.min(23, rect.w * 0.22))}px Microsoft YaHei, sans-serif`;
   strokeText(item.name, compact ? rect.x + rect.w / 2 - 4 : rect.x + iconSize + 16, rect.y + rect.h / 2 + 8, selected ? "#2a160c" : "#fff3cf", selected ? "#ffe8a3" : "#130906", 3);
+  if (isShovel && ready && !compact) {
+    ctx.font = "12px Microsoft YaHei, sans-serif";
+    strokeText(item.hint, rect.x + iconSize + 17, rect.y + rect.h - 8, "#f5d78b", "#130906", 2);
+  }
   if (!ready) {
     ctx.fillStyle = "rgba(20, 11, 7, .72)";
     roundRect(ctx, rect.x + rect.w - 39, rect.y + 9, 31, rect.h - 18, 9);
@@ -1752,6 +1782,23 @@ function drawSpeedButton() {
 
 function drawDrag() {
   if (!drag) return;
+  if (drag.type === "shovel") {
+    drawSvgAsset("shovel", drag.x - 30, drag.y - 30, 60, 60);
+    const cell = pointToCell(drag.x, drag.y);
+    if (cell) {
+      const key = `${cell.r}:${cell.c}`;
+      const exists = allLand.bottom.some(([rr, cc]) => rr === cell.r && cc === cell.c);
+      const ok = exists && !game.bottom.land.has(key);
+      const rect = cellRect(cell.r, cell.c);
+      ctx.save();
+      ctx.strokeStyle = ok ? "#f3b331" : "#b24036";
+      ctx.lineWidth = 4;
+      ctx.setLineDash(ok ? [8, 5] : []);
+      ctx.strokeRect(rect.x + 4, rect.y + 4, CELL - 8, CELL - 8);
+      ctx.restore();
+    }
+    return;
+  }
   drawUnitCard(drag.unit, { x: drag.x - CELL / 2, y: drag.y - CELL / 2, w: CELL, h: CELL }, true);
   const campIndex = hitCampSlot({ x: drag.x, y: drag.y });
   if (campIndex !== -1) {
@@ -2197,6 +2244,14 @@ canvas.addEventListener("pointerdown", (event) => {
   }
   const strategyRect = STRATEGY_RECTS.find((rect) => inRect(p, rect));
   if (strategyRect) {
+    if (strategyRect.key === "fortify") {
+      if (game.strategyCooldowns.fortify <= 0) {
+        drag = { type: "shovel", x: p.x, y: p.y, source: { type: "shovel" } };
+        game.selectedStrategy = null;
+        playSfx("select");
+      }
+      return;
+    }
     selectStrategy(strategyRect.key);
     return;
   }
@@ -2239,6 +2294,12 @@ canvas.addEventListener("pointerup", (event) => {
   const p = canvasPoint(event);
   pointer = p;
   if (!drag) return;
+  if (drag.type === "shovel") {
+    const cell = pointToCell(p.x, p.y);
+    if (cell) tryUseShovelAt(cell);
+    drag = null;
+    return;
+  }
   const campIndex = hitCampSlot(p);
   if (campIndex !== -1) {
     tryDropUnitToCamp(game.bottom, drag.unit, campIndex, drag.source);
