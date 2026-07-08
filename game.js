@@ -30,7 +30,7 @@ const ROLE_BY_LABEL = {
   农: "farmer",
 };
 const ROLE_META = {
-  spear: { title: "枪阵", code: "枪", color: "#b4342d" },
+  spear: { title: "枪", code: "枪", color: "#1a1510" },
   blade: { title: "刀盾", code: "盾", color: "#8a5a35" },
   archer: { title: "弓手", code: "弓", color: "#31705a" },
   rider: { title: "轻骑", code: "骑", color: "#5d4b43" },
@@ -54,6 +54,7 @@ const STRATEGIES = [
 ];
 let STRATEGY_RECTS = [];
 const MAX_MORALE = 100;
+const MAX_UNIT_LEVEL = 5;
 
 let bottomPath = [];
 let battlePaths = {};
@@ -192,8 +193,8 @@ function createGame() {
     wave: 1,
     waveTimer: 0,
     waveBanner: 2.6,
-    spawn: { bottom: 0.65 },
-    spawnBudget: { bottom: 7 },
+    spawn: { bottom: 0.85 },
+    spawnBudget: { bottom: 5 },
     paused: false,
     speed: 1,
     time: 0,
@@ -560,6 +561,13 @@ function damageEnemy(player, enemy, amount, source) {
 
 function unitStats(unit) {
   const level = unit.level;
+  if (unit.role === "spear") {
+    return {
+      range: CELL * 3 + (level - 1) * 28,
+      damage: Math.round(18 * (1 + (level - 1) * 0.68)),
+      rate: Math.max(0.34, 0.78 - (level - 1) * 0.085),
+    };
+  }
   if (unit.kind === "hero") {
     const heroStats = {
       strategy: { range: 270, damage: 38, rate: 0.92 },
@@ -574,7 +582,7 @@ function unitStats(unit) {
   }
   const table = {
     blade: { range: 98, damage: 28, rate: 0.92 },
-    spear: { range: 184, damage: 19, rate: 0.82 },
+    spear: { range: CELL * 3, damage: 18, rate: 0.78 },
     archer: { range: 344, damage: 14, rate: 1.02 },
     rider: { range: 150, damage: 23, rate: 0.62 },
     char: { range: 160, damage: 14, rate: 0.95 },
@@ -753,6 +761,10 @@ function setCampUnit(player, index, unit) {
 }
 
 function mergeIntoUnit(target, source, x, y) {
+  if (target.level >= MAX_UNIT_LEVEL) {
+    popText(x, y, "满级", "#fff7bb", 0.72);
+    return false;
+  }
   target.level += 1;
   target.cooldown = 0.1;
   game.hasPlaced = true;
@@ -845,6 +857,7 @@ function tryDropUnit(player, unit, r, c, source) {
 
 function canMerge(a, b) {
   if (!a || !b || a.id === b.id || a.level !== b.level) return false;
+  if (a.level >= MAX_UNIT_LEVEL || b.level >= MAX_UNIT_LEVEL) return false;
   if (a.kind === "hero" && b.kind === "hero") return a.name === b.name;
   if (a.kind !== b.kind) return false;
   return a.label === b.label;
@@ -1550,32 +1563,35 @@ function drawUnitCard(unit, rect, isDrag) {
     ctx.globalAlpha = 1;
   }
   const meta = unit.kind === "hero" ? ROLE_META.hero : (ROLE_META[unit.role] || ROLE_META.char);
-  ctx.fillStyle = meta.color;
-  ctx.globalAlpha = 0.92;
-  roundRect(ctx, 12, 12, Math.min(42, width * 0.32), 24, 7);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-  ctx.textAlign = "center";
-  ctx.font = "16px Microsoft YaHei, sans-serif";
-  strokeText(unit.kind === "char" ? unit.label : meta.code, 33, 30, "#fff8df", "#1b0d08", 3);
+  if (unit.role !== "spear") {
+    ctx.fillStyle = meta.color;
+    ctx.globalAlpha = 0.92;
+    roundRect(ctx, 12, 12, Math.min(42, width * 0.32), 24, 7);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.textAlign = "center";
+    ctx.font = "16px Microsoft YaHei, sans-serif";
+    strokeText(unit.kind === "char" ? unit.label : meta.code, 33, 30, "#fff8df", "#1b0d08", 3);
+  }
   const glyph = unitGlyph(unit);
   const glyphSize = hero ? Math.min(44, height * 0.54) : Math.min(52, height * 0.66);
   const glyphY = hero ? height * 0.56 : height * 0.61;
-  drawCalligraphyGlyph(glyph, width / 2 + 3, glyphY, glyphSize, hero ? "#fff4c0" : "#fff8df", hero ? "#2d140b" : "#1b0d08", hero ? 6 : 5);
+  if (unit.role === "spear" && !hero) {
+    drawSpearGlyph(width / 2 + 3, glyphY, glyphSize);
+  } else {
+    drawCalligraphyGlyph(glyph, width / 2 + 3, glyphY, glyphSize, hero ? "#fff4c0" : "#fff8df", hero ? "#2d140b" : "#1b0d08", hero ? 6 : 5);
+  }
   ctx.textAlign = "center";
-  if (height >= 64) {
+  if (height >= 64 && unit.role !== "spear") {
     ctx.fillStyle = "rgba(35, 17, 10, .82)";
     roundRect(ctx, 12, height - 25, width - 24, 18, 6);
     ctx.fill();
     ctx.font = hero ? "17px Microsoft YaHei, sans-serif" : "13px Microsoft YaHei, sans-serif";
     strokeText(unitShortName(unit), width / 2, height - 11, "#fff5d8", "#160904", 2);
   }
-  ctx.fillStyle = "#2a140c";
-  ctx.beginPath();
-  ctx.arc(width - 18, 20, 12, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.font = "14px Microsoft YaHei, sans-serif";
-  strokeText(String(unit.level), width - 18, 25, "#ffe9a6", "#160904", 2);
+  ctx.font = "11px Microsoft YaHei, sans-serif";
+  ctx.textAlign = "right";
+  strokeText(`Lv${unit.level}`, width - 10, 21, "#ffe9a6", "#160904", 2);
   if (isDrag) {
     ctx.strokeStyle = "#f5c24a";
     ctx.lineWidth = 4;
@@ -2003,6 +2019,56 @@ function drawCalligraphyGlyph(text, x, y, size, fill, stroke, width = 5) {
   ctx.beginPath();
   ctx.moveTo(-adjusted * 0.48, -adjusted * 0.16);
   ctx.lineTo(adjusted * 0.48, -adjusted * 0.18);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSpearGlyph(x, y, size) {
+  ctx.save();
+  drawCalligraphyGlyph("枪", x, y, size, "#0f0d0a", "#f5ddb0", 4);
+  ctx.translate(x, y);
+  const s = size / 56;
+  ctx.scale(s, s);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.shadowColor = "rgba(0, 0, 0, .24)";
+  ctx.shadowBlur = 4;
+  ctx.strokeStyle = "#0b0907";
+  ctx.fillStyle = "#0b0907";
+  ctx.lineWidth = 4.4;
+  ctx.beginPath();
+  ctx.moveTo(-22, -39);
+  ctx.lineTo(-22, 15);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-22, -47);
+  ctx.lineTo(-29, -32);
+  ctx.lineTo(-15, -32);
+  ctx.closePath();
+  ctx.fill();
+  ctx.lineWidth = 5.2;
+  ctx.beginPath();
+  ctx.moveTo(-35, -12);
+  ctx.quadraticCurveTo(-29, -16, -22, -20);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-22, -13);
+  ctx.quadraticCurveTo(-31, 0, -38, 15);
+  ctx.stroke();
+  ctx.lineWidth = 4.8;
+  ctx.beginPath();
+  ctx.moveTo(-6, -4);
+  ctx.quadraticCurveTo(-17, -10, -22, -15);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-5, 12);
+  ctx.quadraticCurveTo(-16, 4, -22, -1);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(255, 232, 170, .55)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-20, -35);
+  ctx.lineTo(-20, 9);
   ctx.stroke();
   ctx.restore();
 }
