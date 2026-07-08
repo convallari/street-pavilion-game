@@ -410,6 +410,7 @@ function updateEnemies(player, dt) {
     const enemy = player.enemies[i];
     const path = battlePaths[enemy.route] || battlePaths.main;
     enemy.bleed = Math.max(0, enemy.bleed - dt);
+    enemy.hitFlash = Math.max(0, (enemy.hitFlash || 0) - dt);
     enemy.slow = Math.max(0, enemy.slow - dt);
     const next = path[enemy.seg + 1];
     if (!next) {
@@ -457,6 +458,7 @@ function updateUnits(player, dt) {
   for (const unit of player.units) {
     if (drag?.unit?.id === unit.id) continue;
     unit.cooldown = Math.max(0, (unit.cooldown || 0) - dt);
+    unit.attackFlash = Math.max(0, (unit.attackFlash || 0) - dt);
     unit.produce = Math.max(0, (unit.produce || 0) - dt);
 
     if (unit.role === "farmer") {
@@ -506,22 +508,25 @@ function findTarget(player, unit) {
 function attackEnemy(player, unit, enemy) {
   const stats = unitStats(unit);
   unit.cooldown = stats.rate;
+  unit.attackFlash = 0.22;
   const zone = zoneCombatBonus(unit, enemy);
   const damage = Math.round(stats.damage * zone.damage * (enemy.resist.normal || 1));
   if (zone.slow) enemy.slow = Math.max(enemy.slow, zone.slow);
   damageEnemy(player, enemy, damage, "normal");
+  enemy.hitFlash = 0.24;
   const from = unitCenter(unit);
   projectiles.push({
     x1: from.x,
     y1: from.y,
     x2: enemy.x,
     y2: enemy.y,
-    life: unit.kind === "hero" ? 0.35 : 0.24,
-    max: unit.kind === "hero" ? 0.35 : 0.24,
-    kind: unit.role,
+    life: unit.role === "spear" ? 0.34 : (unit.kind === "hero" ? 0.35 : 0.24),
+    max: unit.role === "spear" ? 0.34 : (unit.kind === "hero" ? 0.35 : 0.24),
+    kind: unit.role === "spear" ? "spearThrust" : unit.role,
     color: unit.kind === "hero" ? unit.tone : "#1f1814",
     width: unit.kind === "hero" ? 9 : 4,
   });
+  if (unit.role === "spear") burst(enemy.x, enemy.y, "#17110c", 5);
   if (unit.kind === "hero") addRing(enemy.x, enemy.y, unit.tone, 0.45);
   playSfx(unit.kind === "hero" ? "heroHit" : "hit");
 }
@@ -1479,7 +1484,8 @@ function drawEnemies(player) {
   for (const enemy of player.enemies) {
     const size = enemy.type === "zhangHe" ? 74 : (enemy.type === "weiGeneral" ? 66 : 56);
     ctx.save();
-    ctx.translate(enemy.x, enemy.y);
+    const hitShake = enemy.hitFlash || 0;
+    ctx.translate(enemy.x + Math.sin(game.time * 72) * hitShake * 16, enemy.y + Math.cos(game.time * 59) * hitShake * 8);
     const hp = Math.max(0, enemy.hp / enemy.maxHp);
     ctx.fillStyle = "#2f2d2b";
     roundRect(ctx, -22, -46, 44, 8, 3);
@@ -1577,7 +1583,8 @@ function drawUnitCard(unit, rect, isDrag) {
   const glyphSize = hero ? Math.min(44, height * 0.54) : Math.min(52, height * 0.66);
   const glyphY = hero ? height * 0.56 : height * 0.61;
   if (unit.role === "spear" && !hero) {
-    drawSpearGlyph(width / 2 + 3, glyphY, glyphSize);
+    const pulse = 1 + Math.sin(game.time * 3.2 + unit.id) * 0.025 + (unit.attackFlash || 0) * 0.18;
+    drawSpearGlyph(width / 2 + 3 + (unit.attackFlash || 0) * 14, glyphY, glyphSize * pulse, unit.attackFlash || 0);
   } else {
     drawCalligraphyGlyph(glyph, width / 2 + 3, glyphY, glyphSize, hero ? "#fff4c0" : "#fff8df", hero ? "#2d140b" : "#1b0d08", hero ? 6 : 5);
   }
@@ -1640,6 +1647,10 @@ function drawStrategyEffects() {
 
 function drawProjectiles() {
   for (const p of projectiles) {
+    if (p.kind === "spearThrust") {
+      drawSpearThrust(p);
+      continue;
+    }
     const t = 1 - p.life / p.max;
     const mx = lerp(p.x1, p.x2, t);
     const my = lerp(p.y1, p.y2, t);
@@ -1671,6 +1682,60 @@ function drawProjectiles() {
     }
     ctx.restore();
   }
+}
+
+function drawSpearThrust(p) {
+  const t = 1 - p.life / p.max;
+  const dx = p.x2 - p.x1;
+  const dy = p.y2 - p.y1;
+  const len = Math.max(1, Math.hypot(dx, dy));
+  const nx = dx / len;
+  const ny = dy / len;
+  const px = -ny;
+  const py = nx;
+  const ease = t < 0.28 ? t / 0.28 * 0.18 : 0.18 + easeOutCubic((t - 0.28) / 0.72) * 0.82;
+  const headX = lerp(p.x1, p.x2, ease);
+  const headY = lerp(p.y1, p.y2, ease);
+  const tailT = Math.max(0, ease - 0.28 - t * 0.08);
+  const tailX = lerp(p.x1, p.x2, tailT);
+  const tailY = lerp(p.y1, p.y2, tailT);
+  const alpha = Math.max(0, 1 - t * 0.18);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(10, 8, 6, .92)";
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.moveTo(tailX, tailY);
+  ctx.quadraticCurveTo(
+    lerp(tailX, headX, 0.58) + px * Math.sin(t * Math.PI) * 10,
+    lerp(tailY, headY, 0.58) + py * Math.sin(t * Math.PI) * 10,
+    headX,
+    headY
+  );
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(236, 196, 94, .58)";
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(tailX - px * 3, tailY - py * 3);
+  ctx.lineTo(headX - px * 2, headY - py * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#0d0906";
+  ctx.beginPath();
+  ctx.moveTo(headX + nx * 18, headY + ny * 18);
+  ctx.lineTo(headX - nx * 8 + px * 8, headY - ny * 8 + py * 8);
+  ctx.lineTo(headX - nx * 5 - px * 7, headY - ny * 5 - py * 7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = alpha * 0.24;
+  ctx.strokeStyle = "#0d0906";
+  ctx.lineWidth = 18;
+  ctx.beginPath();
+  ctx.moveTo(tailX - nx * 14, tailY - ny * 14);
+  ctx.lineTo(headX - nx * 4, headY - ny * 4);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawParticles() {
@@ -2023,7 +2088,7 @@ function drawCalligraphyGlyph(text, x, y, size, fill, stroke, width = 5) {
   ctx.restore();
 }
 
-function drawSpearGlyph(x, y, size) {
+function drawSpearGlyph(x, y, size, thrust = 0) {
   ctx.save();
   drawCalligraphyGlyph("枪", x, y, size, "#0f0d0a", "#f5ddb0", 4);
   ctx.translate(x, y);
@@ -2035,15 +2100,15 @@ function drawSpearGlyph(x, y, size) {
   ctx.shadowBlur = 4;
   ctx.strokeStyle = "#0b0907";
   ctx.fillStyle = "#0b0907";
-  ctx.lineWidth = 4.4;
+  ctx.lineWidth = 4.4 + thrust * 5;
   ctx.beginPath();
   ctx.moveTo(-22, -39);
-  ctx.lineTo(-22, 15);
+  ctx.lineTo(-22 + thrust * 44, 15 - thrust * 8);
   ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(-22, -47);
-  ctx.lineTo(-29, -32);
-  ctx.lineTo(-15, -32);
+  ctx.moveTo(-22 + thrust * 46, -47 - thrust * 5);
+  ctx.lineTo(-29 + thrust * 46, -32 - thrust * 3);
+  ctx.lineTo(-15 + thrust * 46, -32 - thrust * 3);
   ctx.closePath();
   ctx.fill();
   ctx.lineWidth = 5.2;
@@ -2322,6 +2387,11 @@ function addRing(x, y, color, scale = 1) {
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+function easeOutCubic(t) {
+  const clamped = Math.max(0, Math.min(1, t));
+  return 1 - Math.pow(1 - clamped, 3);
 }
 
 function inRect(point, rect) {
