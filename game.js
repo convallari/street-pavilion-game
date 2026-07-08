@@ -1074,7 +1074,7 @@ function drawMenu() {
   ctx.font = `${Math.max(46, Math.min(72, W * 0.11))}px KaiTi, STKaiti, serif`;
   strokeText("街亭之战", W / 2, titleY, "#c0362b", "rgba(255,247,219,.9)", 8);
   ctx.font = `${Math.max(20, Math.min(28, W * 0.04))}px Microsoft YaHei, sans-serif`;
-  strokeText("火柴人计谋塔防", W / 2, titleY + 56, "#f1d67a", "#17130f", 5);
+  strokeText("墨字计谋塔防", W / 2, titleY + 56, "#f1d67a", "#17130f", 5);
   drawMenuRules(titleY + 88);
   drawButton(startRect.x, startRect.y, startRect.w, startRect.h, "#b9483e", "#642b25");
   ctx.font = `${Math.max(28, Math.min(38, W * 0.055))}px Microsoft YaHei, sans-serif`;
@@ -1123,10 +1123,10 @@ function drawMenuScene() {
   drawBanner(W * 0.16, H * 0.42, "#a2322a", "蜀");
   drawBanner(W * 0.84, H * 0.41, "#553531", "魏");
   drawPathStroke(bottomPath, "rgba(118, 99, 82, .36)", 54);
-  drawSvgAsset("heroWangping", W * 0.33 - 38, H * 0.52, 76, 76);
-  drawSvgAsset("spear", W * 0.43 - 32, H * 0.55, 64, 64);
-  drawSvgAsset("weiRider", W * 0.64 - 36, H * 0.50, 72, 72);
-  drawSvgAsset("weiSoldier", W * 0.75 - 32, H * 0.54, 64, 64);
+  drawGlyphSeal("平", W * 0.33, H * 0.56, 76, "#316e67", "#fff4d2");
+  drawGlyphSeal("枪", W * 0.43, H * 0.58, 64, "#9b2f28", "#fff4d2");
+  drawGlyphSeal("骑", W * 0.64, H * 0.54, 72, "#553531", "#f6ded0");
+  drawGlyphSeal("卒", W * 0.75, H * 0.58, 64, "#6b2e2b", "#f6ded0");
   ctx.globalAlpha = 0.26;
   ctx.fillStyle = "#2f3b32";
   ctx.beginPath();
@@ -1475,7 +1475,9 @@ function drawEnemies(player) {
     roundRect(ctx, -21, -45, 42 * hp, 6, 3);
     ctx.fill();
     drawEnemyRouteMarker(enemy, size);
-    drawSvgAsset(enemy.type, -size / 2, -size / 2 + 4, size, size);
+    const enemyColor = enemy.type === "zhangHe" ? "#ffdd9a" : (enemy.type === "weiGeneral" ? "#f0c08a" : "#ead8c5");
+    const enemyStroke = enemy.type === "zhangHe" ? "#38100b" : "#21120d";
+    drawCalligraphyGlyph(enemy.glyph, 0, 17, size * 0.88, enemyColor, enemyStroke, enemy.type === "zhangHe" ? 6 : 5);
     if (enemy.slow > 0) {
       ctx.strokeStyle = "rgba(105, 190, 120, .8)";
       ctx.lineWidth = 3;
@@ -1556,14 +1558,18 @@ function drawUnitCard(unit, rect, isDrag) {
   ctx.textAlign = "center";
   ctx.font = "16px Microsoft YaHei, sans-serif";
   strokeText(unit.kind === "char" ? unit.label : meta.code, 33, 30, "#fff8df", "#1b0d08", 3);
-  const artSize = Math.min(58, height - 18);
-  drawSvgAsset(unit.svgKey, width / 2 - artSize / 2 + 5, 8, artSize, artSize);
+  const glyph = unitGlyph(unit);
+  const glyphSize = hero ? Math.min(44, height * 0.54) : Math.min(52, height * 0.66);
+  const glyphY = hero ? height * 0.56 : height * 0.61;
+  drawCalligraphyGlyph(glyph, width / 2 + 3, glyphY, glyphSize, hero ? "#fff4c0" : "#fff8df", hero ? "#2d140b" : "#1b0d08", hero ? 6 : 5);
   ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(35, 17, 10, .82)";
-  roundRect(ctx, 12, height - 25, width - 24, 18, 6);
-  ctx.fill();
-  ctx.font = hero ? "17px Microsoft YaHei, sans-serif" : "13px Microsoft YaHei, sans-serif";
-  strokeText(unitShortName(unit), width / 2, height - 11, "#fff5d8", "#160904", 2);
+  if (height >= 64) {
+    ctx.fillStyle = "rgba(35, 17, 10, .82)";
+    roundRect(ctx, 12, height - 25, width - 24, 18, 6);
+    ctx.fill();
+    ctx.font = hero ? "17px Microsoft YaHei, sans-serif" : "13px Microsoft YaHei, sans-serif";
+    strokeText(unitShortName(unit), width / 2, height - 11, "#fff5d8", "#160904", 2);
+  }
   ctx.fillStyle = "#2a140c";
   ctx.beginPath();
   ctx.arc(width - 18, 20, 12, 0, Math.PI * 2);
@@ -1582,6 +1588,12 @@ function unitShortName(unit) {
   if (unit.kind === "hero") return unit.name;
   if (unit.kind === "char") return `印 ${unit.label}`;
   return ROLE_META[unit.role]?.title || unit.name;
+}
+
+function unitGlyph(unit) {
+  if (unit.kind === "hero") return unit.name;
+  if (unit.kind === "char") return unit.label;
+  return ROLE_META[unit.role]?.code || unit.label;
 }
 
 function drawStrategyEffects() {
@@ -1957,6 +1969,59 @@ function drawSvgAsset(key, x, y, w, h) {
     return;
   }
   drawStickFallback(x, y, w, h, SVG_SPECS[key]?.accent || "#222");
+}
+
+function calligraphyFont(size) {
+  return `900 ${size}px LiSu, SimLi, KaiTi, STKaiti, serif`;
+}
+
+function drawCalligraphyGlyph(text, x, y, size, fill, stroke, width = 5) {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  const chars = String(text);
+  const adjusted = chars.length > 1 ? Math.round(size * 0.72) : Math.round(size);
+  ctx.font = calligraphyFont(adjusted);
+  ctx.translate(x, y);
+  ctx.scale(chars.length > 1 ? 1.05 : 1.14, 0.96);
+  ctx.shadowColor = "rgba(70, 28, 12, .32)";
+  ctx.shadowBlur = 7;
+  ctx.shadowOffsetY = 3;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(255, 225, 150, .7)";
+  ctx.lineWidth = width + 5;
+  ctx.strokeText(chars, 0, 0);
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = width;
+  ctx.strokeText(chars, 0, 0);
+  ctx.fillStyle = fill;
+  ctx.fillText(chars, 0, 0);
+  ctx.globalAlpha = 0.42;
+  ctx.strokeStyle = "rgba(255, 252, 223, .85)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-adjusted * 0.48, -adjusted * 0.16);
+  ctx.lineTo(adjusted * 0.48, -adjusted * 0.18);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawGlyphSeal(text, x, y, size, bg, fill) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "rgba(35, 18, 12, .42)";
+  ctx.beginPath();
+  ctx.ellipse(3, 7, size * 0.47, size * 0.16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = bg;
+  ctx.strokeStyle = "rgba(255, 232, 170, .78)";
+  ctx.lineWidth = 3;
+  roundRect(ctx, -size * 0.42, -size * 0.44, size * 0.84, size * 0.84, 9);
+  ctx.fill();
+  ctx.stroke();
+  drawCalligraphyGlyph(text, 0, size * 0.18, size * 0.62, fill, "#1a0c07", 4);
+  ctx.restore();
 }
 
 function drawStickFallback(x, y, w, h, color) {
